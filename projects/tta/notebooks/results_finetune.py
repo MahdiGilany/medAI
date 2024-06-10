@@ -39,7 +39,7 @@ from medAI.datasets.nct2013 import (
     PatchOptions
 )
 
-for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
+for LEAVE_OUT in ["CRCEO", "UVA"]: #"JH", "PCC", "PMCC",
     print("Leave out", LEAVE_OUT)
 
     ## Data Finetuning
@@ -86,9 +86,22 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     #     debug=config.debug,
     # )
     
-    if isinstance(config.cohort_selection_config, LeaveOneCenterOutCohortSelectionOptions):
-        if config.cohort_selection_config.leave_out == "UVA":
-            config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
+    # if isinstance(config.cohort_selection_config, LeaveOneCenterOutCohortSelectionOptions):
+    #     if config.cohort_selection_config.leave_out == "UVA":
+    #         config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
+    
+    # test_ds = ExactNCT2013RFImagePatches(
+    #     split="test",
+    #     transform=Transform(augment=True),
+    #     cohort_selection_options=config.cohort_selection_config,
+    #     patch_options=config.patch_config,
+    #     debug=config.debug,
+    # )
+    
+    
+    ## For heatmap
+    config.cohort_selection_config.benign_to_cancer_ratio = 1.5
+    config.patch_config = PatchOptions(needle_mask_threshold=-1, prostate_mask_threshold=0.9, patch_size_mm = (5,5), strides = (1,1)) 
     
     test_ds = ExactNCT2013RFImagePatches(
         split="test",
@@ -97,6 +110,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
         patch_options=config.patch_config,
         debug=config.debug,
     )
+    
 
 
     # val_loader = DataLoader(
@@ -115,24 +129,24 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
 
     fe_config = FeatureExtractorConfig(features_only=True)
 
-    # Create the model
-    fe_model: nn.Module = timm.create_model(
-        fe_config.model_name,
-        num_classes=fe_config.num_classes,
-        in_chans=1,
-        features_only=fe_config.features_only,
-        norm_layer=lambda channels: nn.GroupNorm(
-                        num_groups=fe_config.num_groups,
-                        num_channels=channels
-                        ))
-
     # # Create the model
     # fe_model: nn.Module = timm.create_model(
     #     fe_config.model_name,
     #     num_classes=fe_config.num_classes,
     #     in_chans=1,
     #     features_only=fe_config.features_only,
-    #     )
+    #     norm_layer=lambda channels: nn.GroupNorm(
+    #                     num_groups=fe_config.num_groups,
+    #                     num_channels=channels
+    #                     ))
+
+    # Create the model
+    fe_model: nn.Module = timm.create_model(
+        fe_config.model_name,
+        num_classes=fe_config.num_classes,
+        in_chans=1,
+        features_only=fe_config.features_only,
+        )
     
     global_pool = SelectAdaptivePool2d(
         pool_type='avg',
@@ -143,8 +157,8 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
 
     linear = nn.Linear(512, config.model_config.num_classes).cuda()
 
-    CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
-    # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
+    # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
+    CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
 
 
     state = torch.load(CHECkPOINT_PATH)
@@ -157,7 +171,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     
     ## MEMO
     loader = test_loader
-    enable_memo = True
+    enable_memo = False
 
     from memo_experiment import batched_marginal_entropy
     metric_calculator = MetricCalculator()
@@ -221,19 +235,25 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     print(metric_calculator.get_metrics(acc_threshold=0.7))
     
     
-    ## Log with wandb
-    import wandb
-    # group=f"results_offline_vicreg_1024-150finetune_bn_3nratio_loco"
-    group=f"results_offline_memo_vicreg_1024-300finetune_gn_3nratio_loco"
+    # ## Log with wandb
+    # import wandb
+    # # group=f"results_offline_vicreg_1024-150finetune_bn_3nratio_loco"
+    # group=f"results_offline_memo_vicreg_1024-300finetune_gn_3nratio_loco"
 
-    print(group)
-    name= group + f"_{LEAVE_OUT}"
-    wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
-    # os.environ["WANDB_MODE"] = "enabled"
-    metrics_dict.update({"epoch": 0})
-    wandb.log(
-        metrics_dict,
-        )
-    wandb.finish()
+    # print(group)
+    # name= group + f"_{LEAVE_OUT}"
+    # wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
+    # # os.environ["WANDB_MODE"] = "enabled"
+    # metrics_dict.update({"epoch": 0})
+    # wandb.log(
+    #     metrics_dict,
+    #     )
+    # wandb.finish()
+    
+    # METRIC_CALCULATOR_PATH = f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco/vicreg_1024-300finetune_1e-4lr_avgprob_gn_crtd3ratio_loco_{LEAVE_OUT}/metric_calculator_memo_prst.pth'
+    METRIC_CALCULATOR_PATH = f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco/vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco_{LEAVE_OUT}/metric_calculator_prst.pth'
+
+    torch.save(metric_calculator, METRIC_CALCULATOR_PATH)
+    print(f"vicreg_1024-150finetune_1e-4lr_avgprob_bn_3ratio_loco_{LEAVE_OUT}")
     
     del test_ds, test_loader, loader, model

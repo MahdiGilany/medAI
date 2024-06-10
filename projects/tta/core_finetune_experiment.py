@@ -53,7 +53,7 @@ class AttentionConfig:
     nhead: int = 8
     qk_dim: int = 128
     v_dim: int = 128
-    dropout: float= 0.
+    dropout: float= 0.1
 
 
 @dataclass
@@ -255,19 +255,19 @@ class CoreFinetuneExperiment(BaselineExperiment):
         fe_model.load_state_dict(torch.load(self._checkpoint_path)["model"])
         
         attention_config = self.config.finetuner_config.attention_config
-        attention = SimpleMultiheadAttention(
-            input_dim=512,
-            qk_dim=attention_config.qk_dim,
-            v_dim=attention_config.v_dim,
-            num_heads=attention_config.nhead,
-            drop_out=attention_config.dropout
-        ).cuda()
-        # attention = nn.TransformerEncoderLayer(
-        #     d_model=512,
-        #     nhead=attention_config.nhead,
-        #     dropout=attention_config.dropout,
-        #     batch_first=True,
-        #     ).cuda()
+        # attention = SimpleMultiheadAttention(
+        #     input_dim=512,
+        #     qk_dim=attention_config.qk_dim,
+        #     v_dim=attention_config.v_dim,
+        #     num_heads=attention_config.nhead,
+        #     drop_out=attention_config.dropout
+        # ).cuda()
+        attention = nn.TransformerEncoderLayer(
+            d_model=512,
+            nhead=attention_config.nhead,
+            dropout=attention_config.dropout,
+            batch_first=True,
+            ).cuda()
         
         linear = torch.nn.Sequential(
             # torch.nn.Linear(512, 64),

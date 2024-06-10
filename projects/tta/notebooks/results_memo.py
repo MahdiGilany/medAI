@@ -39,7 +39,7 @@ from medAI.datasets.nct2013 import (
     PatchOptions
 )
 
-for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
+for LEAVE_OUT in ["CRCEO", "UVA"]: #  "JH", "PCC", "PMCC", 
     print("Leave out", LEAVE_OUT)
 
     ## Data Finetuning
@@ -86,9 +86,21 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     #     debug=config.debug,
     # )
     
-    if isinstance(config.cohort_selection_config, LeaveOneCenterOutCohortSelectionOptions):
-        if config.cohort_selection_config.leave_out == "UVA":
-            config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
+    # if isinstance(config.cohort_selection_config, LeaveOneCenterOutCohortSelectionOptions):
+    #     if config.cohort_selection_config.leave_out == "UVA":
+    #         config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
+    
+    # test_ds = ExactNCT2013RFImagePatches(
+    #     split="test",
+    #     transform=Transform(augment=True),
+    #     cohort_selection_options=config.cohort_selection_config,
+    #     patch_options=config.patch_config,
+    #     debug=config.debug,
+    # )
+    
+    ## For heatmap
+    config.cohort_selection_config.benign_to_cancer_ratio = 1.5
+    config.patch_config = PatchOptions(needle_mask_threshold=-1, prostate_mask_threshold=0.9, patch_size_mm = (5,5), strides = (1,1)) 
     
     test_ds = ExactNCT2013RFImagePatches(
         split="test",
@@ -97,6 +109,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
         patch_options=config.patch_config,
         debug=config.debug,
     )
+    
 
 
     # val_loader = DataLoader(
@@ -122,11 +135,18 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
                         num_groups=fe_config.num_groups,
                         num_channels=channels
                         ))
+    
+    # model: nn.Module = timm.create_model(
+    # fe_config.model_name,
+    # num_classes=fe_config.num_classes,
+    # in_chans=1,
+    # features_only=fe_config.features_only)
 
     CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
     # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_avgprob_3ratio_loco/baseline_gn_avgprob_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
     # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_1nratio_loco/baseline_gn_1nratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
 
+    # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_bn_avgprob_3ratio_loco2/baseline_bn_avgprob_3ratio_loco2_{LEAVE_OUT}/', 'best_model.ckpt')
 
     model.load_state_dict(torch.load(CHECkPOINT_PATH)['model'])
     model.eval()
@@ -135,7 +155,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     
     ## MEMO
     loader = test_loader
-    enable_memo = False
+    enable_memo = True
 
     from memo_experiment import batched_marginal_entropy
     metric_calculator = MetricCalculator()
@@ -199,21 +219,32 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     print(metric_calculator.get_metrics(acc_threshold=0.7))
     
     
-    ## Log with wandb
-    import wandb
-    # group=f"offline_memo_gn_1nratio_loco"
-    # group=f"results_offline_memo_gn_3nratio_loco2"
-    group=f"results_offline_baseline_gn_3nratio_loco2"
-    # group=f"offline_baseline_5e-4lr_gn_avgprob_3ratio_loco"
-    # group=f"offline_newBaseline_1e-4lr2ep_gn_avgprob_3ratio_loco"
-    print(group)
-    name= group + f"_{LEAVE_OUT}"
-    wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
-    # os.environ["WANDB_MODE"] = "enabled"
-    metrics_dict.update({"epoch": 0})
-    wandb.log(
-        metrics_dict,
-        )
-    wandb.finish()
+    # ## Log with wandb
+    # import wandb
+    # # group=f"offline_memo_gn_1nratio_loco"
+    # # group=f"results_offline_memo_gn_3nratio_loco2"
+    # group=f"results_offline_baseline_gn_3nratio_loco2"
+    # # group=f"offline_baseline_5e-4lr_gn_avgprob_3ratio_loco"
+    # # group=f"offline_newBaseline_1e-4lr2ep_gn_avgprob_3ratio_loco"
+    # print(group)
+    # name= group + f"_{LEAVE_OUT}"
+    # wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
+    # # os.environ["WANDB_MODE"] = "enabled"
+    # metrics_dict.update({"epoch": 0})
+    # wandb.log(
+    #     metrics_dict,
+    #     )
+    # wandb.finish()
+    
+    ## Save metrics for heatmap
+    # METRIC_CALCULATOR_PATH = f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/metric_calculator_prst.pth'
+    METRIC_CALCULATOR_PATH = f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/metric_calculator_memo_prst.pth'
+    print(f"memo_gn_crtd3ratio_loco{LEAVE_OUT}")
+
+    # METRIC_CALCULATOR_PATH = f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_bn_avgprob_3ratio_loco2/baseline_bn_avgprob_3ratio_loco2_{LEAVE_OUT}/metric_calculator_prst.pth'
+    # print(f"baseline_bn_avgprob_3ratio_loco2_{LEAVE_OUT}")
+
+    torch.save(metric_calculator, METRIC_CALCULATOR_PATH)
+    
     
     del test_ds, test_loader, loader, model

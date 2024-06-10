@@ -1,20 +1,17 @@
 # # ensemble experiment
 # NUM_ENSEMBLES=5
 # INSTANCE_NORM=False
-# USE_BATCH_NORM=False
-# GROUP="ensemble-res18_${NUM_ENSEMBLES}mdls_gn_3nratio_loco"
-
-# for CENTER in "PCC" "PMCC" "CRCEO" "UVA" #  "JH"  
+# USE_BATCH_NORM=True
+# GROUP="ensemble_${NUM_ENSEMBLES}mdls_bn_128bz_3nratio_loco"
+#         # --model_name "resnet18" \
+# for CENTER in "PCC" "PMCC" "CRCEO" "UVA" "JH"  
 # do
 #     python ensemble_experiment.py \
 #         --name "${GROUP}_${CENTER}" \
 #         --group "${GROUP}" \
 #         --cluster "slurm" \
 #         --slurm_gres "gpu:a40:1" \
-#         --slurm_qos "deadline" \
-#         --slurm_account "deadline" \
-#         --slurm_exclude "gpu034,gpu017" \
-#         --model_name "resnet18" \
+#         --batch_size 128 \
 #         --num_ensembles $NUM_ENSEMBLES \
 #         --cohort_selection_config "loco" \
 #         --leave_out $CENTER \
@@ -45,27 +42,54 @@
 # done 
 
 
+# baseline experiment
+INSTANCE_NORM=False
+USE_BATCH_NORM=False
+# GROUP="baseline_gn_avgprob_3ratio_loco"
+# GROUP="baseline_gn_2x2pz_3ratio_loco"
+GROUP="baseline_gn_1x1pz_.6ndl-thr_3ratio_loco"
+# GROUP="baseline_gn_avgprob_3ratio_1poly_loco"
+# GROUP="sam_baseline_gn_e-4rho_loco"
+# GROUP="baseline_bn_inst-nrm_loco"
+        # --slurm_qos "deadline" \
+        # --slurm_account "deadline" \
+        # --slurm_exclude "gpu034,gpu017" \
+for CENTER in "PCC" "UVA" #"CRCEO" "JH" "PMCC" #
+do
+    python baseline_experiment.py \
+        --name "${GROUP}_${CENTER}" \
+        --group "${GROUP}" \
+        --slurm_gres "gpu:a40:1" \
+        --cluster "slurm" \
+        --batch_size 32 \
+        --cohort_selection_config "loco" \
+        --leave_out $CENTER \
+        --instance_norm $INSTANCE_NORM \
+        --use_batch_norm $USE_BATCH_NORM \
+        --benign_to_cancer_ratio_train 3.0 \
+        --use_poly1_loss False \
+        --eps 1.0 \
+        --needle_mask_threshold 0.6 \
+        --patch_size_mm 1.0 1.0 \
+        --strides 1.0 1.0 \
+        --lr 0.0001
+done
+
+
+
 # # baseline experiment
 # INSTANCE_NORM=False
-# USE_BATCH_NORM=True
-# # GROUP="baseline_gn_avgprob_3ratio_loco"
-# GROUP="results_baseline_bn_3nratio_loco"
-# # GROUP="baseline_gn_avgprob_3ratio_1poly_loco"
-# # GROUP="sam_baseline_gn_e-4rho_loco"
-# # GROUP="baseline_bn_inst-nrm_loco"
-
-# for CENTER in  "PCC" "UVA" "CRCEO" # "JH" "PMCC"
+# USE_BATCH_NORM=False
+# GROUP="baseline_gn_3nratio"
+# for fold in 0 1 2 3 4
 # do
 #     python baseline_experiment.py \
-#         --name "${GROUP}_${CENTER}" \
+#         --name "${GROUP}_${fold}" \
 #         --group "${GROUP}" \
 #         --slurm_gres "gpu:a40:1" \
-#         --slurm_qos "deadline" \
-#         --slurm_account "deadline" \
-#         --slurm_exclude "gpu034,gpu017" \
 #         --cluster "slurm" \
-#         --cohort_selection_config "loco" \
-#         --leave_out $CENTER \
+#         --cohort_selection_config "kfold" \
+#         --fold $fold \
 #         --instance_norm $INSTANCE_NORM \
 #         --use_batch_norm $USE_BATCH_NORM \
 #         --benign_to_cancer_ratio_train 3.0 \
@@ -282,29 +306,29 @@
 # done
 
 
-# MI ensemble experiment
-NUM_ENSEMBLES=5
-INSTANCE_NORM=False
-USE_BATCH_NORM=False
-GROUP="MIensemble_10mi_${NUM_ENSEMBLES}mdls_3ratio_gn_loco2"
-# GROUP="MIensemble_.1mi_.05var.01cov_${NUM_ENSEMBLES}mdls_3ratio_gn_loco"
-for CENTER in "JH" "PCC" "PMCC" "CRCEO" "UVA" #  
-do
-    python MI_ensemble_experiment.py \
-        --name "${GROUP}_${CENTER}" \
-        --group "${GROUP}" \
-        --cluster "slurm" \
-        --slurm_gres "gpu:a40:1" \
-        --slurm_qos "deadline" \
-        --slurm_account "deadline" \
-        --num_ensembles $NUM_ENSEMBLES \
-        --cohort_selection_config "loco" \
-        --leave_out $CENTER \
-        --instance_norm $INSTANCE_NORM \
-        --use_batch_norm $USE_BATCH_NORM \
-        --epochs 50 \
-        --benign_to_cancer_ratio_train 3.0 \
-        --var_coeff 0.0 \
-        --cov_coeff 0.0 \
-        --mi_coeff 10.0
-done
+# # MI ensemble experiment
+# NUM_ENSEMBLES=5
+# INSTANCE_NORM=False
+# USE_BATCH_NORM=False
+# GROUP="MIensemble_10mi_${NUM_ENSEMBLES}mdls_3ratio_gn_loco"
+# # GROUP="MIensemble_.1mi_.05var.01cov_${NUM_ENSEMBLES}mdls_3ratio_gn_loco"
+#         # --slurm_qos "deadline" \
+#         # --slurm_account "deadline" \
+# for CENTER in "JH" "PCC" "PMCC" "CRCEO" "UVA" #  
+# do
+#     python MI_ensemble_experiment.py \
+#         --name "${GROUP}_${CENTER}" \
+#         --group "${GROUP}" \
+#         --cluster "slurm" \
+#         --slurm_gres "gpu:a40:1" \
+#         --num_ensembles $NUM_ENSEMBLES \
+#         --cohort_selection_config "loco" \
+#         --leave_out $CENTER \
+#         --instance_norm $INSTANCE_NORM \
+#         --use_batch_norm $USE_BATCH_NORM \
+#         --epochs 50 \
+#         --benign_to_cancer_ratio_train 3.0 \
+#         --var_coeff 0.0 \
+#         --cov_coeff 0.0 \
+#         --mi_coeff 10.0
+# done
