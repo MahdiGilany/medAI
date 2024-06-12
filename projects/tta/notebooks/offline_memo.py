@@ -124,7 +124,8 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
                         ))
 
     # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
-    CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_avgprob_3ratio_loco/baseline_gn_avgprob_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
+    # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_avgprob_3ratio_loco/baseline_gn_avgprob_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
+    CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_3ratio_loco-noexcltrn/', 'best_model.ckpt')
 
 
     model.load_state_dict(torch.load(CHECkPOINT_PATH)['model'])
@@ -134,7 +135,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     
     ## MEMO
     loader = test_loader
-    enable_memo = True
+    enable_memo = False
 
     from memo_experiment import batched_marginal_entropy
     metric_calculator = MetricCalculator()
@@ -197,7 +198,8 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     import wandb
     # group=f"offline_memo_gn_3ratio_loco"
     # group=f"offline_baseline_5e-4lr_gn_avgprob_3ratio_loco"
-    group=f"offline_newBaseline_1e-4lr2ep_gn_avgprob_3ratio_loco"
+    # group=f"offline_newBaseline_1e-4lr2ep_gn_avgprob_3ratio_loco"
+    group=f"baseline_gn_3ratio_loco-noexcltrn"
     name= group + f"_{LEAVE_OUT}"
     wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
     # os.environ["WANDB_MODE"] = "enabled"

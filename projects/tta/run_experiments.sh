@@ -47,14 +47,14 @@ INSTANCE_NORM=False
 USE_BATCH_NORM=False
 # GROUP="baseline_gn_avgprob_3ratio_loco"
 # GROUP="baseline_gn_2x2pz_3ratio_loco"
-GROUP="baseline_gn_1x1pz_.6ndl-thr_3ratio_loco"
+GROUP="baseline_gn_3ratio_loco-noexcltrn"
 # GROUP="baseline_gn_avgprob_3ratio_1poly_loco"
 # GROUP="sam_baseline_gn_e-4rho_loco"
 # GROUP="baseline_bn_inst-nrm_loco"
         # --slurm_qos "deadline" \
         # --slurm_account "deadline" \
         # --slurm_exclude "gpu034,gpu017" \
-for CENTER in "PCC" "UVA" #"CRCEO" "JH" "PMCC" #
+for CENTER in "JH" # "PCC" "UVA" # "CRCEO"  "PMCC" #  
 do
     python baseline_experiment.py \
         --name "${GROUP}_${CENTER}" \
@@ -64,13 +64,14 @@ do
         --batch_size 32 \
         --cohort_selection_config "loco" \
         --leave_out $CENTER \
+        --exclude_from_train False \
         --instance_norm $INSTANCE_NORM \
         --use_batch_norm $USE_BATCH_NORM \
         --benign_to_cancer_ratio_train 3.0 \
         --use_poly1_loss False \
         --eps 1.0 \
         --needle_mask_threshold 0.6 \
-        --patch_size_mm 1.0 1.0 \
+        --patch_size_mm 5.0 5.0 \
         --strides 1.0 1.0 \
         --lr 0.0001
 done

@@ -68,17 +68,18 @@ def get_patient_splits_by_fold(fold=0, n_folds=5):
     return train, val, test
 
 
-def get_patient_splits_by_center(leave_out="UVA"): 
+def get_patient_splits_by_center(leave_out="UVA", exclude_from_train=True): 
     """returns the list of patient ids for the train, val, and test splits."""
     if leave_out not in ['UVA', 'CRCEO', 'PCC', 'PMCC', 'JH']: 
         raise ValueError(f"leave_out must be one of 'UVA', 'CRCEO', 'PCC', 'PMCC', 'JH', but got {leave_out}")
 
     table = PATIENT
-
-    train = table[table.center != leave_out]
+            
+    train = table[table.center != leave_out] if exclude_from_train else table
     train, val = train_test_split(
         train, test_size=0.2, random_state=0, stratify=train["center"]
-    )
+    )  
+    
     train = train.id.values.tolist()
     val = val.id.values.tolist()
     test = table[table.center == leave_out].id.values.tolist()
@@ -147,6 +148,7 @@ class KFoldCohortSelectionOptions(CohortSelectionOptions):
 @dataclass 
 class LeaveOneCenterOutCohortSelectionOptions(CohortSelectionOptions): 
     leave_out: tp.Literal['UVA', 'CRCEO', 'PCC', 'PMCC', 'JH'] = 'UVA'
+    exclude_from_train: bool = True
 
     
 def select_cohort(
@@ -165,7 +167,7 @@ def select_cohort(
         )
     elif isinstance(cohort_selection_options, LeaveOneCenterOutCohortSelectionOptions):
         train, val, test = get_patient_splits_by_center(
-            cohort_selection_options.leave_out
+            cohort_selection_options.leave_out, cohort_selection_options.exclude_from_train
         ) 
     else: 
         raise NotImplementedError

@@ -255,9 +255,16 @@ class BaselineExperiment(BasicExperiment):
             debug=self.config.debug,
         )
         
+        # workaround for too many open files error
         if isinstance(self.config.cohort_selection_config, LeaveOneCenterOutCohortSelectionOptions):
             if self.config.cohort_selection_config.leave_out == "UVA":
                 self.config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
+            #     if self.config.cohort_selection_config.exclude_from_train is False:
+            #         self.config.cohort_selection_config.benign_to_cancer_ratio = 3.5
+            # if self.config.cohort_selection_config.leave_out == "PCC":
+            #     if self.config.cohort_selection_config.exclude_from_train is False:
+            #         self.config.cohort_selection_config.benign_to_cancer_ratio = 6.0
+
                 
         test_ds = ExactNCT2013RFImagePatches(
             split="test",

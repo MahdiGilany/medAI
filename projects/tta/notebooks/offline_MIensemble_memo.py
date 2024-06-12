@@ -1,3 +1,4 @@
+import math
 import os
 from dotenv import load_dotenv
 # Loading environment variables
@@ -79,7 +80,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             label = torch.tensor(item["grade"] != "Benign").long()
             
             if selfT.augment:
-                patch_augs = torch.stack([selfT.transform(patch) for _ in range(5)], dim=0)
+                patch_augs = torch.stack([selfT.transform(patch) for _ in range(2)], dim=0)
                 return patch_augs, patch, label, item
             
             return -1, patch, label, item
@@ -97,8 +98,9 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
         debug=config.debug,
     )
 
+    batch_size = config.batch_size
     test_loader = DataLoader(
-        test_ds, batch_size=config.batch_size, shuffle=False, num_workers=4
+        test_ds, batch_size=batch_size, shuffle=False, num_workers=4
     )
 
     # val_ds = ExactNCT2013RFImagePatches(
@@ -250,7 +252,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
         labels = labels.cuda()
         
         adaptation_model_list = [deepcopy(model) for model in list_models] 
-        [model.eval() for model in adaptation_model_list]
+        [model.train() for model in adaptation_model_list]
         # no reset
         # adaptation_model_list = list_models 
         
@@ -259,10 +261,10 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             params = []
             for model in adaptation_model_list:
                 params.append({'params': model.parameters()})
-            optimizer = optim.SGD(params, lr=5e-4)
+            optimizer = optim.SGD(params, lr=1e-1)
             _images_augs = images_augs.reshape(-1, *images_augs.shape[2:]).cuda()
             
-            # Adapt to test
+            # Adapt to test 
             for j in range(1):
                 # Forward pass
                 stacked_logits = torch.stack([model(_images_augs).reshape(batch_size, aug_size, -1) for model in adaptation_model_list]) # (n_models, batch_size, aug_size, num_classes)
@@ -271,20 +273,37 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
                     
                 list_losses = []
                 
+                ###### Losses ######
+                # Core Cross-Entropy
+                # avg_marginal_probs = F.softmax(stacked_logits, dim=-1).mean(dim=0).mean(dim=0).mean(dim=0).expand(batch_size,-1).detach() # (1, num_classes)
+                # marginal_probs = F.softmax(stacked_logits, dim=-1).mean(dim=0).mean(dim=1) # (batch_size, num_classes)
+                # loss = nn.CrossEntropyLoss()(marginal_probs, avg_marginal_probs)
+                
+                ## Combined Cross-Entropy
+                # marginal_probs = F.softmax(stacked_logits, dim=-1).mean(dim=0).mean(dim=1) # (batch_size, num_classes)
+                # loss = nn.CrossEntropyLoss()(marginal_probs, labels)
+            
                 ## calculating marginal entropy based on all models predictions
                 perm_logits = torch.permute(stacked_logits, (1, 0, 2, 3)) # (batch_size, n_models, aug_size, num_classes)
                 all_logits = torch.reshape(perm_logits, (batch_size, -1, perm_logits.shape[-1])) # (batch_size, n_models*aug_size, num_classes)
                 entropy_loss, avg_logits = batched_marginal_entropy(all_logits) 
+                # SAR
+                margin = 0.2*math.log(2)
+                idx = torch.where(entropy_loss < margin)
+                entropy_loss = entropy_loss[idx]
+                loss = entropy_loss.mean()
                 # mutual information loss
-                mi_coeff = 0.0/5.0
-                MI_loss = mutual_info_loss(F.softmax(stacked_logits.reshape(-1,batch_size*aug_size, 2), dim=-1))
-                loss = entropy_loss.mean() + mi_coeff * MI_loss
+                # mi_coeff = 0.0
+                # MI_loss = mutual_info_loss(F.softmax(stacked_logits.reshape(-1,batch_size*aug_size, 2), dim=-1))
+                # loss = entropy_loss.mean() + mi_coeff * MI_loss
+                
                 ## calculating marginal entropy for each model separately
                 # for k in range(5):
                 #     loss, logits = batched_marginal_entropy(stacked_logits[k,...])
                 #     ## Combined Cross-Entropy
                 #     # loss = nn.CrossEntropyLoss()(marginal_probs[k,...], avg_marginal_probs)
                 #     list_losses.append(loss.mean())
+                #####################
                 
                 optimizer.zero_grad()          
                 # sum(list_losses).backward()
@@ -292,6 +311,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
                 optimizer.step()
         
         # Evaluate
+        [model.eval() for model in adaptation_model_list]
         logits = torch.stack([model(images) for model in adaptation_model_list])
         if temp_scale:
             logits = logits / temp + beta
@@ -332,12 +352,20 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
         
     ## Log with wandb
     import wandb
-    # group=f"offline_MIEnsmMemo_e-3lr_gn_3ratio_loco"
+    group=f"offline_MIEnsmMemo_e-2lr_gn_3ratio_loco2"
     # group=f"offline_MIEnsmMemo_gn_3ratio_loco"
     
-    group=f"offline_MIEnsmMemoCombd_1MI_gn_3ratio_loco"
-    # group=f"offline_MIEnsmMemoCombd_2MI_noreset_gn_3ratio_loco"
+    # group=f"offline_MIEnsmMemoCombd_1MI_gn_3ratio_loco"
+    # group=f"offline_MIEnsmMemoCombd_100MI_e-3lr_gn_3ratio_loco"
 
+    # group=f"offline_MIEnsmTTAUprBnd_frznHead_e-2lr_gn_3ratio_loco"
+    
+    # group=f"offline_MIEnsmSAR_.5margin_e-3lr_gn_3ratio_loco"
+    
+    # group=f"offline_MIEnsmMemoAvgBatchProb_e-3lr_gn_3ratio_loco"
+    
+    # group=f"offline_MIEnsmMemo_frznHead_e-2lr_gn_3ratio_loco2"
+    
     print(group)
     name= group + f"_{LEAVE_OUT}"
     wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
