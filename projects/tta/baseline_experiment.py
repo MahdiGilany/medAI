@@ -69,6 +69,7 @@ class FeatureExtractorConfig:
 class OptimizerConfig:
     opt: str = 'adam'
     lr: float = 1e-4
+    warmup_epochs: int = 5
     weight_decay: float = 0.0
     momentum: float = 0.9
     
@@ -167,7 +168,7 @@ class BaselineExperiment(BasicExperiment):
         
         self.scheduler = medAI.utils.LinearWarmupCosineAnnealingLR(
             self.optimizer if not isinstance(self.optimizer, SAM) else self.optimizer.base_optimizer,
-            warmup_epochs=5 * len(self.train_loader),
+            warmup_epochs=self.config.optimizer_config.warmup_epochs * len(self.train_loader),
             max_epochs=self.config.epochs * len(self.train_loader),
         )
         

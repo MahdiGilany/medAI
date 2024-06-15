@@ -28,7 +28,10 @@ BMODE_DATA_PATH = os.path.join(
     "bmode_learning_data",
     "nct",
 )
-
+NEW_DATA_PATH = os.path.join(
+    DATA_ROOT,
+    "nct2013",
+)
 
 def get_patient_splits_by_fold(fold=0, n_folds=5):
     """returns the list of patient ids for the train, val, and test splits."""
@@ -68,22 +71,31 @@ def get_patient_splits_by_fold(fold=0, n_folds=5):
     return train, val, test
 
 
-def get_patient_splits_by_center(leave_out="UVA", exclude_from_train=True): 
+def get_patient_splits_by_center(leave_out="UVA", split_test=False, concat_test_train=True): 
     """returns the list of patient ids for the train, val, and test splits."""
     if leave_out not in ['UVA', 'CRCEO', 'PCC', 'PMCC', 'JH']: 
         raise ValueError(f"leave_out must be one of 'UVA', 'CRCEO', 'PCC', 'PMCC', 'JH', but got {leave_out}")
 
     table = PATIENT
             
-    train = table[table.center != leave_out] if exclude_from_train else table
-    train, val = train_test_split(
-        train, test_size=0.2, random_state=0, stratify=train["center"]
-    )  
+    train = table[table.center != leave_out]    
+    test = table[table.center == leave_out]
     
+    if split_test: 
+        test_train, test_test = train_test_split(
+            test, test_size=0.8, random_state=0, stratify=test["center"]
+        )
+        train = pd.concat([train, test_train]) if concat_test_train else train
+        test = test_test
+    
+    train, val = train_test_split(
+        train , test_size=0.2, random_state=0, stratify=train["center"]
+    )  
+
     train = train.id.values.tolist()
     val = val.id.values.tolist()
-    test = table[table.center == leave_out].id.values.tolist()
-
+    test = test.id.values.tolist()
+    
     return train, val, test
 
 
@@ -148,7 +160,8 @@ class KFoldCohortSelectionOptions(CohortSelectionOptions):
 @dataclass 
 class LeaveOneCenterOutCohortSelectionOptions(CohortSelectionOptions): 
     leave_out: tp.Literal['UVA', 'CRCEO', 'PCC', 'PMCC', 'JH'] = 'UVA'
-    exclude_from_train: bool = True
+    split_test: bool = False
+    concat_test_train: bool = True
 
     
 def select_cohort(
@@ -167,7 +180,7 @@ def select_cohort(
         )
     elif isinstance(cohort_selection_options, LeaveOneCenterOutCohortSelectionOptions):
         train, val, test = get_patient_splits_by_center(
-            cohort_selection_options.leave_out, cohort_selection_options.exclude_from_train
+            cohort_selection_options.leave_out, cohort_selection_options.split_test, cohort_selection_options.concat_test_train
         ) 
     else: 
         raise NotImplementedError
@@ -280,7 +293,7 @@ class ExactNCT2013RFImages(ExactNCT2013Cores):
     ):
         super().__init__(split, cohort_selection_options)
         self.needle_mask = np.load(
-            os.path.join(BMODE_DATA_PATH, "needle_mask.npy"), mmap_mode="r"
+            os.path.join(NEW_DATA_PATH, "needle_mask.npy"), mmap_mode="r"
         )
         self.transform = transform
         self.cache = cache 
