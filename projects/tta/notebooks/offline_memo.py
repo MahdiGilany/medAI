@@ -39,7 +39,7 @@ from medAI.datasets.nct2013 import (
     PatchOptions
 )
 
-for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
+for LEAVE_OUT in ["UVA"]: # "JH", "PCC", "CRCEO", "PMCC", "UVA"
     print("Leave out", LEAVE_OUT)
 
     ## Data Finetuning
@@ -56,11 +56,14 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
             selfT.size = (256, 256)
             # Augmentation
             selfT.transform = T.Compose([
-                T.RandomAffine(degrees=0, translate=(0.2, 0.2)),
+                # T.RandomAffine(degrees=0, translate=(0.2, 0.2)),
                 T.RandomErasing(p=0.5, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0.5),
                 T.RandomHorizontalFlip(p=0.5),
                 T.RandomVerticalFlip(p=0.5),
             ])  
+            # selfT.transform = T.Compose([
+            #     T.Resize(selfT.size, antialias=True)
+            # ])  
         
         def __call__(selfT, item):
             patch = item.pop("patch")
@@ -73,7 +76,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
             label = torch.tensor(item["grade"] != "Benign").long()
             
             if selfT.augment:
-                patch_augs = torch.stack([selfT.transform(patch) for _ in range(2)], dim=0)
+                patch_augs = torch.stack([selfT.transform(patch) for _ in range(5)], dim=0)
                 return patch_augs, patch, label, item
             
             return -1, patch, label, item
@@ -123,9 +126,9 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
                         num_channels=channels
                         ))
 
-    # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
+    CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_crtd3ratio_loco/baseline_gn_crtd3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
     # CHECkPOINT_PATH = os.path.join(f'/fs01/home/abbasgln/codes/medAI/projects/tta/logs/tta/baseline_gn_avgprob_3ratio_loco/baseline_gn_avgprob_3ratio_loco_{LEAVE_OUT}/', 'best_model.ckpt')
-    CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_3ratio_loco-noexcltrn/', 'best_model.ckpt')
+    # CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/baseline_gn_3ratio_loco-noexcltrn/', 'best_model.ckpt')
 
 
     model.load_state_dict(torch.load(CHECkPOINT_PATH)['model'])
@@ -135,7 +138,7 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     
     ## MEMO
     loader = test_loader
-    enable_memo = False
+    enable_memo = True
 
     from memo_experiment import batched_marginal_entropy
     metric_calculator = MetricCalculator()
@@ -156,9 +159,9 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
         adaptation_model = deepcopy(model)
         adaptation_model.eval()
         if enable_memo:
-            optimizer = optim.SGD(adaptation_model.parameters(), lr=1e-4)
+            optimizer = optim.SGD(adaptation_model.parameters(), lr=1e-3)
             
-            for j in range(2):
+            for j in range(1):
                 outputs = adaptation_model(_images_augs).reshape(batch_size, aug_size, -1)  
                 loss, logits = batched_marginal_entropy(outputs)
                 optimizer.zero_grad()
@@ -196,10 +199,21 @@ for LEAVE_OUT in ["JH", "PCC", "CRCEO", "PMCC", "UVA"]: #
     
     ## Log with wandb
     import wandb
-    # group=f"offline_memo_gn_3ratio_loco"
+    # group=f"offline_tent_5it_e-3lr_gn_3ratio_loco"
+    group=f"offline_memo_3aug_e-3lr_gn_3ratio_loco"
     # group=f"offline_baseline_5e-4lr_gn_avgprob_3ratio_loco"
     # group=f"offline_newBaseline_1e-4lr2ep_gn_avgprob_3ratio_loco"
-    group=f"baseline_gn_3ratio_loco-noexcltrn"
+    # group=f"baseline_gn_3ratio_loco-noexcltrn"
+    
+    # Save logits
+    save_dir = f"/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/saved_logits/{group}/{LEAVE_OUT}"
+    os.makedirs(save_dir, exist_ok=True) if not os.path.exists(save_dir) else None
+    torch.save({
+        "core_id_probs": metric_calculator.core_id_probs,
+        "core_id_labels": metric_calculator.core_id_labels},
+        os.path.join(save_dir, "core_id_probs_labels.pth")
+        )
+    
     name= group + f"_{LEAVE_OUT}"
     wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
     # os.environ["WANDB_MODE"] = "enabled"

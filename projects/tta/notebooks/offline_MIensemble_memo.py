@@ -43,7 +43,7 @@ from medAI.datasets.nct2013 import (
 
 
 
-for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
+for LEAVE_OUT in ["CRCEO"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
     print("Leave out", LEAVE_OUT)
     
     ## Data Finetuning
@@ -62,11 +62,14 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             selfT.augment = augment
             selfT.size = (256, 256)
             # Augmentation
+            # selfT.transform = T.Compose([
+            #     # T.RandomAffine(degrees=0, translate=(0.2, 0.2), fill=0.5),
+            #     T.RandomErasing(p=0.5, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0.5),
+            #     T.RandomHorizontalFlip(p=0.5),
+            #     T.RandomVerticalFlip(p=0.5),
+            # ])  
             selfT.transform = T.Compose([
-                T.RandomAffine(degrees=0, translate=(0.2, 0.2)),
-                T.RandomErasing(p=0.5, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0.5),
-                T.RandomHorizontalFlip(p=0.5),
-                T.RandomVerticalFlip(p=0.5),
+                T.Resize(selfT.size, antialias=True)
             ])  
         
         def __call__(selfT, item):
@@ -80,7 +83,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             label = torch.tensor(item["grade"] != "Benign").long()
             
             if selfT.augment:
-                patch_augs = torch.stack([selfT.transform(patch) for _ in range(2)], dim=0)
+                patch_augs = torch.stack([selfT.transform(patch) for _ in range(1)], dim=0)
                 return patch_augs, patch, label, item
             
             return -1, patch, label, item
@@ -141,9 +144,9 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
     
     linears = [nn.Linear(512, config.model_config.num_classes).cuda()
                for _ in range(config.num_ensembles)]
-        
-    CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/MIensemble_10mi_5mdls_3ratio_gn_loco2/MIensemble_10mi_5mdls_3ratio_gn_loco2_{LEAVE_OUT}/', 'best_model.ckpt')
 
+    CHECkPOINT_PATH = os.path.join(f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/MIensemble_10mi_5mdls_3ratio_gn_loco2/MIensemble_10mi_5mdls_3ratio_gn_loco2_{LEAVE_OUT}/', 'best_model.ckpt')
+    
     state = torch.load(CHECkPOINT_PATH)
     [model.load_state_dict(state["list_fe_models"][i]) for i, model in enumerate(fe_models)]
     [linear.load_state_dict(state["list_linears"][i]) for i, linear in enumerate(linears)]
@@ -244,7 +247,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
     metric_calculator = MetricCalculator()
     desc = "test"
 
-
+    logits_list = []
     for i, batch in enumerate(tqdm(loader, desc=desc)):
         images_augs, images, labels, meta_data = batch
         images_augs = images_augs.cuda()
@@ -261,11 +264,11 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             params = []
             for model in adaptation_model_list:
                 params.append({'params': model.parameters()})
-            optimizer = optim.SGD(params, lr=1e-1)
+            optimizer = optim.SGD(params, lr=1e-3)
             _images_augs = images_augs.reshape(-1, *images_augs.shape[2:]).cuda()
             
             # Adapt to test 
-            for j in range(1):
+            for j in range(5):
                 # Forward pass
                 stacked_logits = torch.stack([model(_images_augs).reshape(batch_size, aug_size, -1) for model in adaptation_model_list]) # (n_models, batch_size, aug_size, num_classes)
                 if temp_scale:
@@ -288,14 +291,15 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
                 all_logits = torch.reshape(perm_logits, (batch_size, -1, perm_logits.shape[-1])) # (batch_size, n_models*aug_size, num_classes)
                 entropy_loss, avg_logits = batched_marginal_entropy(all_logits) 
                 # SAR
-                margin = 0.2*math.log(2)
-                idx = torch.where(entropy_loss < margin)
-                entropy_loss = entropy_loss[idx]
-                loss = entropy_loss.mean()
+                # margin = 0.2*math.log(2)
+                # idx = torch.where(entropy_loss < margin)
+                # entropy_loss = entropy_loss[idx]
+                # loss = entropy_loss.mean()
                 # mutual information loss
-                # mi_coeff = 0.0
-                # MI_loss = mutual_info_loss(F.softmax(stacked_logits.reshape(-1,batch_size*aug_size, 2), dim=-1))
-                # loss = entropy_loss.mean() + mi_coeff * MI_loss
+                mi_coeff = 0.0
+                MI_loss = mutual_info_loss(F.softmax(stacked_logits.reshape(-1,batch_size*aug_size, 2), dim=-1))
+                loss = entropy_loss.mean() + mi_coeff * MI_loss
+                # breakpoint()
                 
                 ## calculating marginal entropy for each model separately
                 # for k in range(5):
@@ -327,7 +331,7 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
             probs = F.softmax(logits, dim=-1).mean(dim=0).detach().cpu(), # Take mean over ensembles
             labels = labels.detach().cpu(),
         )
-    
+            
     
     # Log metrics every epoch
     metrics = metric_calculator.get_metrics(acc_threshold=0.3)
@@ -352,8 +356,9 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
         
     ## Log with wandb
     import wandb
-    group=f"offline_MIEnsmMemo_e-2lr_gn_3ratio_loco2"
-    # group=f"offline_MIEnsmMemo_gn_3ratio_loco"
+    # group=f"offline_MIEnsmMemo_e-2lr_gn_3ratio_loco2"
+    group=f"offline_MIEnsmMemo_noaug_5it_e-3lr_gn_3ratio_loco"
+    # group=f"offline_MIEnsmMemo_4augs_e-3lr_gn_3ratio_loco"
     
     # group=f"offline_MIEnsmMemoCombd_1MI_gn_3ratio_loco"
     # group=f"offline_MIEnsmMemoCombd_100MI_e-3lr_gn_3ratio_loco"
@@ -366,16 +371,26 @@ for LEAVE_OUT in ["PCC", "UVA"]: # "JH", "PCC", "PMCC", "UVA", "CRCEO"
     
     # group=f"offline_MIEnsmMemo_frznHead_e-2lr_gn_3ratio_loco2"
     
-    print(group)
-    name= group + f"_{LEAVE_OUT}"
-    wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
-    # os.environ["WANDB_MODE"] = "enabled"
-    metrics_dict.update({"epoch": 0})
-    wandb.log(
-        metrics_dict,
+ 
+    # Save logits
+    save_dir = f"/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/saved_logits/{group}/{LEAVE_OUT}"
+    os.makedirs(save_dir, exist_ok=True) if not os.path.exists(save_dir) else None
+    torch.save({
+        "core_id_probs": metric_calculator.core_id_probs,
+        "core_id_labels": metric_calculator.core_id_labels},
+        os.path.join(save_dir, "core_id_probs_labels.pth")
         )
     
+    print(group)
+    # name= group + f"_{LEAVE_OUT}"
+    # wandb.init(project="tta", entity="mahdigilany", name=name, group=group)
+    # # os.environ["WANDB_MODE"] = "enabled"
+    # metrics_dict.update({"epoch": 0})
+    # wandb.log(
+    #     metrics_dict,
+    #     )
     
-    wandb.finish()
-    # del val_ds, test_ds, val_loader, test_loader, loader, list_models
-    del test_ds,  test_loader, loader, list_models
+    
+    # wandb.finish()
+    # # del val_ds, test_ds, val_loader, test_loader, loader, list_models
+    # del test_ds,  test_loader, loader, list_models

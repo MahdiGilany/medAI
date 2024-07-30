@@ -19,11 +19,11 @@
 
 # python offline_ensemble_pseudo.py
 # python offline_ensemble_memo.py
-# python offline_memo.py
+python offline_memo.py
 # python offline_divemble_pseudo.py
 # python results_memo.py
 # python results_ensemble_pseudo.py
 # python results_finetune.py
 # python results_sar.py
-python offline_MIensemble_memo.py
+# python offline_MIensemble_memo.py
 # python offline_MIensemble_uplabel.py

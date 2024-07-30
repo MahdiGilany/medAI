@@ -254,7 +254,7 @@ class ExactNCT2013BModeImages(ExactNCT2013Cores):
         super().__init__(split=split, cohort_selection_options=cohort_selection_options)
         self.transform = transform
         self.needle_mask = np.load(
-            os.path.join(BMODE_DATA_PATH, "needle_mask.npy"), mmap_mode="r"
+            os.path.join(NEW_DATA_PATH, "needle_mask.npy"), mmap_mode="r"
         )
         self._bmode_data = np.load(
             os.path.join(BMODE_DATA_PATH, "bmode_data.npy"), mmap_mode="r"
