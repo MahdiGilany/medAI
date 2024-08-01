@@ -194,20 +194,24 @@
 # # vicreg pretrain experiment
 # INSTANCE_NORM=False
 # USE_BATCH_NORM=True
-# GROUP="vicreg_pretrn_5e-3-20linprob_bn_f"
-# # --group "${GROUP}" \
+# GROUP="vicreg_pretrn_512zdim_1e-3lr_10linprob_200ep_1ratio_bn_f"
 # for FOLD in 0 # 1 2 3 4
 # do
 #     python vicreg_pretrain_experiment.py \
 #         --name "${GROUP}_${FOLD}" \
+#         --group "${GROUP}" \
 #         --cluster "slurm" \
 #         --slurm_gres "gpu:a40:1" \
+#         --cohort_selection_config "kfold" \
 #         --fold $FOLD \
 #         --instance_norm $INSTANCE_NORM \
 #         --use_batch_norm $USE_BATCH_NORM \
+#         --benign_to_cancer_ratio_train 1.0 \
+#         --proj_output_dim 512 \
 #         --cov_coeff 1.0 \
-#         --linear_lr 0.005 \
-#         --linear_epochs 20
+#         --epochs 200 \
+#         --linear_lr 0.001 \
+#         --linear_epochs 10
 # done
 
 
@@ -216,12 +220,15 @@
 # USE_BATCH_NORM=True
 # # GROUP="vicreg_1024-300finetune_1e-4lr_8heads_64qk128v_8corebz_gn_loco"
 # # GROUP="vicreg_finetune_1e-4backlr_1e-4headlr_8heads_transformer_gn_loco_batch10_newrunep"
-# GROUP="vicreg_1024-150corefintun_1ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
+# # GROUP="vicreg_1024-150corefintun_1ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
 # # checkpoint_path_name="vicreg_pretrn_1024zdim_gn_300ep_loco"
 # # checkpoint_path_name="vicreg_pretrn_2048zdim_gn_300ep_loco"
 # # checkpoint_path_name="vicreg_pretrn_1024zdim_gn_300ep_3ratio_loco"
-# checkpoint_path_name="vicreg_pretrn_1024zdim_bn_150ep_3ratio_loco"
+# # checkpoint_path_name="vicreg_pretrn_1024zdim_bn_150ep_3ratio_loco"
 # # checkpoint_path_name="vicreg_pretrn_1024zdim_bn_150ep_1ratio_loco"
+
+# GROUP="TRUSformer_1024-300corefintun_3ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
+# checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
 # for CENTER in "JH" #"PCC" "PMCC" "UVA" "CRCEO" 
 # do
 #     python core_finetune_experiment.py \
@@ -249,6 +256,35 @@
 #         --dropout 0.0 \
 #         # --prostate_mask_threshold -1
 # done
+
+
+# vicreg finetune core experiment
+INSTANCE_NORM=False
+USE_BATCH_NORM=True
+GROUP="TRUSformer_nopos_1024-300corefintun_3ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
+checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
+for FOLD in 0 
+do
+    python core_finetune_experiment.py \
+        --name "${GROUP}_${FOLD}" \
+        --group "${GROUP}" \
+        --cluster "slurm" \
+        --slurm_gres "gpu:a40:1" \
+        --cohort_selection_config "kfold" \
+        --fold $FOLD \
+        --instance_norm $INSTANCE_NORM \
+        --use_batch_norm $USE_BATCH_NORM \
+        --benign_to_cancer_ratio_train 3.0 \
+        --epochs 50 \
+        --batch_size 16 \
+        --backbone_lr 0.0005 \
+        --head_lr 0.0005 \
+        --nhead 8 \
+        --nlayer 12 \
+        --checkpoint_path_name $checkpoint_path_name \
+        --prostate_mask_threshold -1
+done
+
 
 
 # # vicreg finetune experiment
@@ -312,29 +348,29 @@
 # done
 
 
-# MI ensemble experiment
-NUM_ENSEMBLES=5
-INSTANCE_NORM=False
-USE_BATCH_NORM=False
-GROUP="MIensemble_10mi_${NUM_ENSEMBLES}mdls_gn_10wrmup_3ratio_loco"
-# GROUP="MIensemble_.1mi_.05var.01cov_${NUM_ENSEMBLES}mdls_3ratio_gn_loco"
-        # --slurm_qos "deadline" \
-        # --slurm_account "deadline" \
-for CENTER in "JH" "PCC" "PMCC" "CRCEO" "UVA" #  
-do
-    python MI_ensemble_experiment.py \
-        --name "${GROUP}_${CENTER}" \
-        --group "${GROUP}" \
-        --cluster "slurm" \
-        --slurm_gres "gpu:a40:1" \
-        --num_ensembles $NUM_ENSEMBLES \
-        --cohort_selection_config "loco" \
-        --leave_out $CENTER \
-        --instance_norm $INSTANCE_NORM \
-        --use_batch_norm $USE_BATCH_NORM \
-        --epochs 50 \
-        --benign_to_cancer_ratio_train 3.0 \
-        --var_coeff 0.0 \
-        --cov_coeff 0.0 \
-        --mi_coeff 10.0
-done
+# # MI ensemble experiment
+# NUM_ENSEMBLES=5
+# INSTANCE_NORM=False
+# USE_BATCH_NORM=False
+# GROUP="MIensemble_10mi_${NUM_ENSEMBLES}mdls_gn_10wrmup_3ratio_loco"
+# # GROUP="MIensemble_.1mi_.05var.01cov_${NUM_ENSEMBLES}mdls_3ratio_gn_loco"
+#         # --slurm_qos "deadline" \
+#         # --slurm_account "deadline" \
+# for CENTER in "JH" "PCC" "PMCC" "CRCEO" "UVA" #  
+# do
+#     python MI_ensemble_experiment.py \
+#         --name "${GROUP}_${CENTER}" \
+#         --group "${GROUP}" \
+#         --cluster "slurm" \
+#         --slurm_gres "gpu:a40:1" \
+#         --num_ensembles $NUM_ENSEMBLES \
+#         --cohort_selection_config "loco" \
+#         --leave_out $CENTER \
+#         --instance_norm $INSTANCE_NORM \
+#         --use_batch_norm $USE_BATCH_NORM \
+#         --epochs 50 \
+#         --benign_to_cancer_ratio_train 3.0 \
+#         --var_coeff 0.0 \
+#         --cov_coeff 0.0 \
+#         --mi_coeff 10.0
+# done

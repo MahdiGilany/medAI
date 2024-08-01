@@ -44,6 +44,9 @@ from timm.layers import create_classifier
 from models.linear_prob import LinearProb
 from models.attention import MultiheadAttention as SimpleMultiheadAttention
 from itertools import chain
+
+from models.bert import TransformerEncoder
+from models.positional_embedding import GridPositionEmbedder2d
  
  
 # # Avoids too many open files error from multiprocessing
@@ -51,6 +54,7 @@ from itertools import chain
 @dataclass
 class AttentionConfig:
     nhead: int = 8
+    nlayer: int = 12
     qk_dim: int = 128
     v_dim: int = 128
     dropout: float= 0.1
@@ -63,22 +67,27 @@ class FinetunerConfig:
     head_lr: float = 5e-4
     core_batch_size: int = 16
     attention_config: AttentionConfig = AttentionConfig()
-    checkpoint_path_name: str = None 
+    checkpoint_path_name: str = "vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f" 
     
 
 @dataclass
 class CoreFinetuneConfig(BaselineConfig):
     """Configuration for the experiment."""
-    name: str = " finetune_test_5"
-    resume: bool = True
-    debug: bool = False
-    use_wandb: bool = True
+    name: str = "core_finetune_test"
+    resume: bool = False
+    debug: bool = True
+    use_wandb: bool = False
     
-    batch_size: int = 1
+    batch_size: int = 10
     epochs: int = 100
+    patch_config: PatchOptions = PatchOptions(
+        needle_mask_threshold = 0.6,
+        prostate_mask_threshold = -1,
+        patch_size_mm = (5, 5)
+    )
     cohort_selection_config: KFoldCohortSelectionOptions | LeaveOneCenterOutCohortSelectionOptions = subgroups(
         {"kfold": KFoldCohortSelectionOptions(fold=0), "loco": LeaveOneCenterOutCohortSelectionOptions(leave_out='PCC')},
-        default="loco"
+        default="kfold"
     )
     model_config: FeatureExtractorConfig = FeatureExtractorConfig(features_only=True)
     finetuner_config: FinetunerConfig = FinetunerConfig()
@@ -103,7 +112,8 @@ class CoreFinetuneExperiment(BaselineExperiment):
             self._checkpoint_path = os.path.join(
                 os.getcwd(),
                 # f'projects/tta/logs/tta/vicreg_pretrn_2048zdim_gn_loco2/vicreg_pretrn_2048zdim_gn_loco2_{self.config.cohort_selection_config.leave_out}/', 
-                f'logs/tta/{self.config.finetuner_config.checkpoint_path_name}/{self.config.finetuner_config.checkpoint_path_name}_{self.config.cohort_selection_config.leave_out}/', 
+                # f'logs/tta/{self.config.finetuner_config.checkpoint_path_name}/{self.config.finetuner_config.checkpoint_path_name}_{self.config.cohort_selection_config.leave_out}/', 
+                f'/ssd005/projects/exactvu_pca/checkpoint_store/Mahdi/{self.config.finetuner_config.checkpoint_path_name}/{self.config.finetuner_config.checkpoint_path_name}_{self.config.cohort_selection_config.fold}/', 
                 'best_model.ckpt'
                 )
   
@@ -129,7 +139,7 @@ class CoreFinetuneExperiment(BaselineExperiment):
                 {"params": self.linear.parameters(),  "lr": self.config.finetuner_config.head_lr}
                 ]
         
-        self.optimizer = optim.Adam(params, weight_decay=1e-6) #lr=self.config.finetuner_config.backbone_lr,
+        self.optimizer = optim.Adam(params, weight_decay=0.0) #lr=self.config.finetuner_config.backbone_lr,
         sched_steps_per_epoch = len(self.train_loader) // self.config.finetuner_config.core_batch_size + 1 
         # sched_steps_per_epoch = len(self.train_loader)  
         self.scheduler = medAI.utils.LinearWarmupCosineAnnealingLR(
@@ -225,7 +235,7 @@ class CoreFinetuneExperiment(BaselineExperiment):
                 self.config.cohort_selection_config.benign_to_cancer_ratio = 5.0 
         test_ds = ExactNCT2013RFCores(
             split="test",
-            transform=Transform(augment=True),
+            transform=Transform(augment=False),
             cohort_selection_options=self.config.cohort_selection_config,
             patch_options=self.config.patch_config,
             debug=self.config.debug,
@@ -262,21 +272,32 @@ class CoreFinetuneExperiment(BaselineExperiment):
         #     num_heads=attention_config.nhead,
         #     drop_out=attention_config.dropout
         # ).cuda()
-        attention = nn.TransformerEncoderLayer(
-            d_model=512,
-            nhead=attention_config.nhead,
-            dropout=attention_config.dropout,
-            batch_first=True,
-            ).cuda()
+        # attention = nn.TransformerEncoderLayer(
+        #     d_model=512,
+        #     nhead=attention_config.nhead,
+        #     dropout=attention_config.dropout,
+        #     batch_first=True,
+        #     ).cuda()
         
-        linear = torch.nn.Sequential(
-            # torch.nn.Linear(512, 64),
-            torch.nn.Linear(attention_config.nhead*attention_config.v_dim, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, self.config.model_config.num_classes),
-        ).cuda()
+        # linear = torch.nn.Sequential(
+        #     # torch.nn.Linear(512, 64),
+        #     torch.nn.Linear(attention_config.nhead*attention_config.v_dim, 64),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Linear(64, self.config.model_config.num_classes),
+        # ).cuda()
         
-
+        projector = nn.Linear(512, 512)
+        bert = TransformerEncoder(hidden_size=512, 
+                                num_hidden_layers=attention_config.nlayer, 
+                                num_attention_heads=attention_config.nhead, 
+                                intermediate_size=512)
+        attention = nn.Sequential(projector, bert)
+        
+        linear = nn.Linear(512, 2)
+        
+        grid_shape = (28, 46)
+        self.pos_embedding = GridPositionEmbedder2d(512, grid_shape)
+        
         return fe_model.cuda(), attention.cuda(), linear.cuda()
     
     def setup_metrics(self):
@@ -324,51 +345,104 @@ class CoreFinetuneExperiment(BaselineExperiment):
         batch_meta_data = []
         for i, batch in enumerate(tqdm(loader, desc=desc)):
             images_augs, images, labels, meta_data = batch
-            images_augs = images_augs.cuda()
+            # images_augs = images_augs.cuda()
             images = images.cuda()
             labels = labels.cuda()
             
+            core_batch_sz, core_len, *img_shape = images.shape
+            
             # Forward
-            reprs = self.fe_model(images[0, ...])
-            attention_reprs = self.attention(reprs, reprs, reprs)[0].mean(dim=0)[None, ...]
+            reprs = self.fe_model(images.reshape(-1, *img_shape)) # [core_batch_sz * core_len, 512]
+            projection_reprs = self.attention[0](reprs) # [core_batch_sz * core_len, 512]
+            projection_reprs = projection_reprs.reshape(core_batch_sz, core_len, -1) # [core_batch_sz, core_len, 512]
+
             
-            # Collect
-            batch_attention_reprs.append(attention_reprs)
-            batch_labels.append(labels[0])
-            batch_meta_data.append(meta_data)
+            h = self.attention[1](projection_reprs).last_hidden_state
+            h = h.mean(dim=1)
+            h = h.reshape(h.shape[0], -1)
+            logits = self.linear(h) # [core_batch_sz, 2]
             
-            if ((i + 1) % self.config.finetuner_config.core_batch_size == 0) or (i == len(loader) - 1):
-                batch_attention_reprs = torch.cat(batch_attention_reprs, dim=0)
-                logits = self.linear(batch_attention_reprs)
-                
-                labels = torch.stack(batch_labels, dim=0).cuda()
-                loss = nn.CrossEntropyLoss()(logits, labels)
-                
-                if desc == 'train':
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
-                    self.scheduler.step()
-                    learning_rates = {f"lr_group_{i}": lr for i, lr in enumerate(self.scheduler.get_last_lr())}
-                    # wandb.log({"lr": self.scheduler.get_last_lr()[0]})
-                    wandb.log(learning_rates)
-                
-                self.log_losses(loss.item(), desc)
-                
-                # Update metrics   
-                self.metric_calculator.update(
-                    batch_meta_data = batch_meta_data,
-                    probs = F.softmax(logits, dim=-1).detach().cpu(),
-                    labels = labels.detach().cpu(),
-                )
-                
-                batch_attention_reprs = []
-                batch_labels = []
-                batch_meta_data = []
+            loss = nn.CrossEntropyLoss()(logits, labels)
+            
+            if desc == 'train':
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                self.scheduler.step()
+                learning_rates = {f"lr_group_{i}": lr for i, lr in enumerate(self.scheduler.get_last_lr())}
+                # wandb.log({"lr": self.scheduler.get_last_lr()[0]})
+                wandb.log(learning_rates)
+            
+            self.log_losses(loss.item(), desc)
+            
+            # Update metrics   
+            self.metric_calculator.update(
+                batch_meta_data = batch_meta_data,
+                probs = F.softmax(logits, dim=-1).detach().cpu(),
+                labels = labels.detach().cpu(),
+            )
         
         # Log metrics every epoch
         self.log_metrics(desc)
 
+    # def run_epoch(self, loader, train=True, desc="train"):
+    #     self.fe_model.train() if train else self.fe_model.eval()
+    #     self.attention.train() if train else self.attention.eval()
+    #     self.linear.train() if train else self.linear.eval()
+        
+    #     self.metric_calculator.reset()
+        
+    #     batch_attention_reprs = []
+    #     batch_labels = []
+    #     batch_meta_data = []
+    #     for i, batch in enumerate(tqdm(loader, desc=desc)):
+    #         images_augs, images, labels, meta_data = batch
+    #         # images_augs = images_augs.cuda()
+    #         images = images.cuda()
+    #         labels = labels.cuda()
+            
+    #         # Forward
+    #         reprs = self.fe_model(images[0, ...])
+    #         attention_reprs = self.attention(reprs, reprs, reprs)[0].mean(dim=0)[None, ...]
+            
+    #         # Collect
+    #         batch_attention_reprs.append(attention_reprs)
+    #         batch_labels.append(labels[0])
+    #         batch_meta_data.append(meta_data)
+            
+    #         if ((i + 1) % self.config.finetuner_config.core_batch_size == 0) or (i == len(loader) - 1):
+    #             batch_attention_reprs = torch.cat(batch_attention_reprs, dim=0)
+    #             logits = self.linear(batch_attention_reprs)
+                
+    #             labels = torch.stack(batch_labels, dim=0).cuda()
+    #             loss = nn.CrossEntropyLoss()(logits, labels)
+                
+    #             if desc == 'train':
+    #                 self.optimizer.zero_grad()
+    #                 loss.backward()
+    #                 self.optimizer.step()
+    #                 self.scheduler.step()
+    #                 learning_rates = {f"lr_group_{i}": lr for i, lr in enumerate(self.scheduler.get_last_lr())}
+    #                 # wandb.log({"lr": self.scheduler.get_last_lr()[0]})
+    #                 wandb.log(learning_rates)
+                
+    #             self.log_losses(loss.item(), desc)
+                
+    #             # Update metrics   
+    #             self.metric_calculator.update(
+    #                 batch_meta_data = batch_meta_data,
+    #                 probs = F.softmax(logits, dim=-1).detach().cpu(),
+    #                 labels = labels.detach().cpu(),
+    #             )
+                
+    #             batch_attention_reprs = []
+    #             batch_labels = []
+    #             batch_meta_data = []
+        
+    #     # Log metrics every epoch
+    #     self.log_metrics(desc)
+
+'''
     # def run_epoch(self, loader, train=True, desc="train"):
     #     self.fe_model.train() if train else self.fe_model.eval()
     #     self.attention.train() if train else self.attention.eval()
@@ -463,7 +537,7 @@ class CoreFinetuneExperiment(BaselineExperiment):
                 
     #     # Log metrics every epoch
     #     self.log_metrics(desc)
-
+'''
 
 class TimmFeatureExtractorWrapper(nn.Module):
     def __init__(self, timm_model):
