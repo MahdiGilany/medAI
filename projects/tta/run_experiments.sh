@@ -194,7 +194,7 @@
 # # vicreg pretrain experiment
 # INSTANCE_NORM=False
 # USE_BATCH_NORM=True
-# GROUP="vicreg_pretrn_512zdim_1e-3lr_10linprob_200ep_1ratio_bn_f"
+# GROUP="vicreg_pretrn_1024zdim_1e-4lr_10linprob_200ep_2ratio_bn_f"
 # for FOLD in 0 # 1 2 3 4
 # do
 #     python vicreg_pretrain_experiment.py \
@@ -206,10 +206,11 @@
 #         --fold $FOLD \
 #         --instance_norm $INSTANCE_NORM \
 #         --use_batch_norm $USE_BATCH_NORM \
-#         --benign_to_cancer_ratio_train 1.0 \
-#         --proj_output_dim 512 \
+#         --benign_to_cancer_ratio_train 2.0 \
+#         --proj_output_dim 1024 \
 #         --cov_coeff 1.0 \
 #         --epochs 200 \
+#         --lr 0.0001 \
 #         --linear_lr 0.001 \
 #         --linear_epochs 10
 # done
@@ -227,7 +228,7 @@
 # # checkpoint_path_name="vicreg_pretrn_1024zdim_bn_150ep_3ratio_loco"
 # # checkpoint_path_name="vicreg_pretrn_1024zdim_bn_150ep_1ratio_loco"
 
-# GROUP="TRUSformer_1024-300corefintun_3ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
+# GROUP="TRUSformer_nopos_1024-300corefintun_3ratio_5e-4lr_bn_3ratio_bz8_f"
 # checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
 # for CENTER in "JH" #"PCC" "PMCC" "UVA" "CRCEO" 
 # do
@@ -261,8 +262,29 @@
 # vicreg finetune core experiment
 INSTANCE_NORM=False
 USE_BATCH_NORM=True
-GROUP="TRUSformer_nopos_1024-300corefintun_3ratio_5e-4lr_5e-5bck_64qk128v_8corebz_bn_3ratio_bz8_loco"
-checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
+# GROUP="TRUSformer_nopos_1024-300corefintun_1e-4lr_bn_3ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
+
+# GROUP="TRUSAttention_nopos_1024-200corefintun_1e-4head-3e-5bckbonlr_bn_1ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_200ep_1ratio_bn_f"
+
+# GROUP="TRUSAttention_noSSL_nopos_1024-200corefintun_1e-4head-1e-3bckbonlr_bn_1ratio_bz8_f"
+# checkpoint_path_name=None
+
+# GROUP="TRUSformer_nopos_512-300corefintun_1e-4head-3e-5bckbonlr_bn_3ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_1e-3lr_10linprob_300ep_3ratio_bn_f"
+
+# GROUP="TRUSformer_pos_512-200corefintun_1e-4head-3e-5bckbonlr_bn_1ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_512zdim_1e-3lr_10linprob_200ep_1ratio_bn_f"
+
+GROUP="TRUSformer_nopos_512-200corefintun_1e-4head-3e-5bckbonlr_bn_2ratio_bz8_f"
+checkpoint_path_name="vicreg_pretrn_512zdim_1e-4lr_10linprob_200ep_2ratio_bn_f"
+
+# GROUP="TRUSformer_pos_1024-300corefintun_1e-4head-3e-5bckbonlr_bn_3ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_1024zdim_1e-3lr_10linprob_300ep_3ratio_bn_f"
+
+# GROUP="TRUSformer_pos_512-300corefintun_1e-4head-3e-5bckbonlr_gn_3ratio_bz8_f"
+# checkpoint_path_name="vicreg_pretrn_512zdim_1e-3lr_10linprob_300ep_3ratio_gn_f"
 for FOLD in 0 
 do
     python core_finetune_experiment.py \
@@ -274,11 +296,12 @@ do
         --fold $FOLD \
         --instance_norm $INSTANCE_NORM \
         --use_batch_norm $USE_BATCH_NORM \
-        --benign_to_cancer_ratio_train 3.0 \
+        --benign_to_cancer_ratio_train 2.0 \
         --epochs 50 \
-        --batch_size 16 \
-        --backbone_lr 0.0005 \
-        --head_lr 0.0005 \
+        --batch_size 8 \
+        --backbone_lr 0.00003 \
+        --head_lr 0.0001 \
+        --use_pos_emb False \
         --nhead 8 \
         --nlayer 12 \
         --checkpoint_path_name $checkpoint_path_name \

@@ -71,7 +71,7 @@ class MultiheadAttention(nn.Module):
         # )
 
 
-    def forward(self, x: Tensor, y: Tensor, z: Tensor, mask=None, return_attention=True):
+    def forward(self, x: Tensor, mask=None, return_attention=False):
         no_batch = False
         if x.ndim == 2:
             x = x.unsqueeze(0)
@@ -96,7 +96,7 @@ class MultiheadAttention(nn.Module):
         attn_value = attn_value.reshape(
             batch_size, seq_length, self.v_dim * self.num_heads
         )
-        o = self.o_proj(attn_value)
+        o = self.o_proj(attn_value) # [batch, seq_len, head*v_dim]
         o = o.squeeze(0) if no_batch else o
 
         if return_attention:

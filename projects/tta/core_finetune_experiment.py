@@ -55,9 +55,10 @@ from models.positional_embedding import GridPositionEmbedder2d
 class AttentionConfig:
     nhead: int = 8
     nlayer: int = 12
-    qk_dim: int = 128
-    v_dim: int = 128
+    qk_dim: int = 512
+    v_dim: int = 64
     dropout: float= 0.1
+    use_pos_emb: bool = False
 
 
 @dataclass
@@ -74,11 +75,11 @@ class FinetunerConfig:
 class CoreFinetuneConfig(BaselineConfig):
     """Configuration for the experiment."""
     name: str = "core_finetune_test"
-    resume: bool = False
-    debug: bool = True
-    use_wandb: bool = False
+    resume: bool = True
+    debug: bool = False
+    use_wandb: bool = True
     
-    batch_size: int = 10
+    batch_size: int = 8
     epochs: int = 100
     patch_config: PatchOptions = PatchOptions(
         needle_mask_threshold = 0.6,
@@ -89,7 +90,7 @@ class CoreFinetuneConfig(BaselineConfig):
         {"kfold": KFoldCohortSelectionOptions(fold=0), "loco": LeaveOneCenterOutCohortSelectionOptions(leave_out='PCC')},
         default="kfold"
     )
-    model_config: FeatureExtractorConfig = FeatureExtractorConfig(features_only=True)
+    model_config: FeatureExtractorConfig = FeatureExtractorConfig(features_only=True, use_batch_norm=True)
     finetuner_config: FinetunerConfig = FinetunerConfig()
 
 
@@ -101,13 +102,14 @@ class CoreFinetuneExperiment(BaselineExperiment):
         super().__init__(config)
         self.best_val_loss = np.inf
         self.best_score_updated = False
-        if self.config.finetuner_config.checkpoint_path_name is None:
-            self._checkpoint_path = os.path.join(
-                os.getcwd(),
-                # f'projects/tta/logs/tta/vicreg_pretrn_2048zdim_gn_loco2/vicreg_pretrn_2048zdim_gn_loco2_{self.config.cohort_selection_config.leave_out}/', 
-                f'logs/tta/vicreg_pretrn_2048zdim_gn_loco2/vicreg_pretrn_2048zdim_gn_loco2_{self.config.cohort_selection_config.leave_out}/', 
-                'best_model.ckpt'
-                )
+        if self.config.finetuner_config.checkpoint_path_name is None or self.config.finetuner_config.checkpoint_path_name == "None":
+            # self._checkpoint_path = os.path.join(
+            #     os.getcwd(),
+            #     # f'projects/tta/logs/tta/vicreg_pretrn_2048zdim_gn_loco2/vicreg_pretrn_2048zdim_gn_loco2_{self.config.cohort_selection_config.leave_out}/', 
+            #     f'logs/tta/vicreg_pretrn_2048zdim_gn_loco2/vicreg_pretrn_2048zdim_gn_loco2_{self.config.cohort_selection_config.leave_out}/', 
+            #     'best_model.ckpt'
+            #     )
+            self._checkpoint_path = None
         else:
             self._checkpoint_path = os.path.join(
                 os.getcwd(),
@@ -133,15 +135,17 @@ class CoreFinetuneExperiment(BaselineExperiment):
                 {"params": self.attention.parameters(), "lr": self.config.finetuner_config.head_lr},
                 {"params": self.linear.parameters(), "lr": self.config.finetuner_config.head_lr}
                 ]
+            if self.config.finetuner_config.attention_config.use_pos_emb:
+                params.append({"params": self.pos_embedding.parameters(), "lr": self.config.finetuner_config.head_lr})
         else:
             params = [
                 {"params": self.attention.parameters(),  "lr": self.config.finetuner_config.head_lr},
                 {"params": self.linear.parameters(),  "lr": self.config.finetuner_config.head_lr}
                 ]
         
-        self.optimizer = optim.Adam(params, weight_decay=0.0) #lr=self.config.finetuner_config.backbone_lr,
-        sched_steps_per_epoch = len(self.train_loader) // self.config.finetuner_config.core_batch_size + 1 
-        # sched_steps_per_epoch = len(self.train_loader)  
+        self.optimizer = optim.Adam(params, weight_decay=1e-6) #lr=self.config.finetuner_config.backbone_lr,
+        # sched_steps_per_epoch = len(self.train_loader) // self.config.finetuner_config.core_batch_size + 1 
+        sched_steps_per_epoch = len(self.train_loader)  
         self.scheduler = medAI.utils.LinearWarmupCosineAnnealingLR(
             self.optimizer,
             warmup_epochs=5 * sched_steps_per_epoch,
@@ -262,16 +266,17 @@ class CoreFinetuneExperiment(BaselineExperiment):
             input_fmt='NCHW',
             )
         fe_model = nn.Sequential(TimmFeatureExtractorWrapper(fe_model), global_pool)
-        fe_model.load_state_dict(torch.load(self._checkpoint_path)["model"])
+        if self._checkpoint_path is not None:
+            fe_model.load_state_dict(torch.load(self._checkpoint_path)["model"])
         
         attention_config = self.config.finetuner_config.attention_config
-        # attention = SimpleMultiheadAttention(
-        #     input_dim=512,
-        #     qk_dim=attention_config.qk_dim,
-        #     v_dim=attention_config.v_dim,
-        #     num_heads=attention_config.nhead,
-        #     drop_out=attention_config.dropout
-        # ).cuda()
+        attention = SimpleMultiheadAttention(
+            input_dim=512,
+            qk_dim=attention_config.qk_dim,
+            v_dim=attention_config.v_dim,
+            num_heads=attention_config.nhead,
+            drop_out=attention_config.dropout
+        )
         # attention = nn.TransformerEncoderLayer(
         #     d_model=512,
         #     nhead=attention_config.nhead,
@@ -287,16 +292,17 @@ class CoreFinetuneExperiment(BaselineExperiment):
         # ).cuda()
         
         projector = nn.Linear(512, 512)
-        bert = TransformerEncoder(hidden_size=512, 
-                                num_hidden_layers=attention_config.nlayer, 
-                                num_attention_heads=attention_config.nhead, 
-                                intermediate_size=512)
-        attention = nn.Sequential(projector, bert)
+        # bert = TransformerEncoder(hidden_size=512, 
+        #                         num_hidden_layers=attention_config.nlayer, 
+        #                         num_attention_heads=attention_config.nhead, 
+        #                         intermediate_size=512)
+        # attention = nn.Sequential(projector, bert)
+        attention = nn.Sequential(projector, attention)
         
         linear = nn.Linear(512, 2)
         
         grid_shape = (28, 46)
-        self.pos_embedding = GridPositionEmbedder2d(512, grid_shape)
+        self.pos_embedding = GridPositionEmbedder2d(512, grid_shape).cuda()
         
         return fe_model.cuda(), attention.cuda(), linear.cuda()
     
@@ -340,9 +346,7 @@ class CoreFinetuneExperiment(BaselineExperiment):
         
         self.metric_calculator.reset()
         
-        batch_attention_reprs = []
-        batch_labels = []
-        batch_meta_data = []
+
         for i, batch in enumerate(tqdm(loader, desc=desc)):
             images_augs, images, labels, meta_data = batch
             # images_augs = images_augs.cuda()
@@ -356,9 +360,16 @@ class CoreFinetuneExperiment(BaselineExperiment):
             projection_reprs = self.attention[0](reprs) # [core_batch_sz * core_len, 512]
             projection_reprs = projection_reprs.reshape(core_batch_sz, core_len, -1) # [core_batch_sz, core_len, 512]
 
+            # Positional embedding
+            pos_mx = meta_data["positions"][:, :, :2].cuda() 
+            pos_emb = self.pos_embedding(pos_mx[:, :, 0].long(), pos_mx[:, :, 1].long())
             
-            h = self.attention[1](projection_reprs).last_hidden_state
-            h = h.mean(dim=1)
+            if self.config.finetuner_config.attention_config.use_pos_emb:
+                projection_reprs = projection_reprs + pos_emb
+        
+            # h = self.attention[1](projection_reprs).last_hidden_state # turn it off if simple attention is used
+            h = self.attention[1](projection_reprs)
+            h = h.mean(dim=1) # [core_batch_sz, 512]
             h = h.reshape(h.shape[0], -1)
             logits = self.linear(h) # [core_batch_sz, 2]
             
@@ -377,7 +388,7 @@ class CoreFinetuneExperiment(BaselineExperiment):
             
             # Update metrics   
             self.metric_calculator.update(
-                batch_meta_data = batch_meta_data,
+                batch_meta_data = meta_data,
                 probs = F.softmax(logits, dim=-1).detach().cpu(),
                 labels = labels.detach().cpu(),
             )

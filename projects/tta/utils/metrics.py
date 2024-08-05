@@ -337,8 +337,10 @@ def expected_calibration_error(preds, confidence, targets, n_bins=10):
 
 class CoreMetricCalculator(MetricCalculator):
     def update(self, batch_meta_data, probs, labels):
-        invs = [meta_data["pct_cancer"][0] for meta_data in batch_meta_data]
-        ids = [meta_data["id"][0] for meta_data in batch_meta_data]
+        invs = batch_meta_data['pct_cancer']
+        ids = batch_meta_data['id']
+        # invs = [meta_data["pct_cancer"][0] for meta_data in batch_meta_data] #TODO only applicable if batches are not the same size
+        # ids = [meta_data["id"][0] for meta_data in batch_meta_data]
         for i, id_tensor in enumerate(ids):
             id = id_tensor.item()
             
