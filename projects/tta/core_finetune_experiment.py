@@ -270,13 +270,13 @@ class CoreFinetuneExperiment(BaselineExperiment):
             fe_model.load_state_dict(torch.load(self._checkpoint_path)["model"])
         
         attention_config = self.config.finetuner_config.attention_config
-        attention = SimpleMultiheadAttention(
-            input_dim=512,
-            qk_dim=attention_config.qk_dim,
-            v_dim=attention_config.v_dim,
-            num_heads=attention_config.nhead,
-            drop_out=attention_config.dropout
-        )
+        # attention = SimpleMultiheadAttention(
+        #     input_dim=512,
+        #     qk_dim=attention_config.qk_dim,
+        #     v_dim=attention_config.v_dim,
+        #     num_heads=attention_config.nhead,
+        #     drop_out=attention_config.dropout
+        # )
         # attention = nn.TransformerEncoderLayer(
         #     d_model=512,
         #     nhead=attention_config.nhead,
@@ -292,12 +292,12 @@ class CoreFinetuneExperiment(BaselineExperiment):
         # ).cuda()
         
         projector = nn.Linear(512, 512)
-        # bert = TransformerEncoder(hidden_size=512, 
-        #                         num_hidden_layers=attention_config.nlayer, 
-        #                         num_attention_heads=attention_config.nhead, 
-        #                         intermediate_size=512)
-        # attention = nn.Sequential(projector, bert)
-        attention = nn.Sequential(projector, attention)
+        bert = TransformerEncoder(hidden_size=512, 
+                                num_hidden_layers=attention_config.nlayer, 
+                                num_attention_heads=attention_config.nhead, 
+                                intermediate_size=512)
+        attention = nn.Sequential(projector, bert)
+        # attention = nn.Sequential(projector, attention)
         
         linear = nn.Linear(512, 2)
         
@@ -367,8 +367,8 @@ class CoreFinetuneExperiment(BaselineExperiment):
             if self.config.finetuner_config.attention_config.use_pos_emb:
                 projection_reprs = projection_reprs + pos_emb
         
-            # h = self.attention[1](projection_reprs).last_hidden_state # turn it off if simple attention is used
-            h = self.attention[1](projection_reprs)
+            h = self.attention[1](projection_reprs).last_hidden_state # turn it off if simple attention is used
+            # h = self.attention[1](projection_reprs)
             h = h.mean(dim=1) # [core_batch_sz, 512]
             h = h.reshape(h.shape[0], -1)
             logits = self.linear(h) # [core_batch_sz, 2]
